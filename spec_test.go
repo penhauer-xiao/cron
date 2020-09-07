@@ -72,7 +72,7 @@ func TestActivation(t *testing.T) {
 }
 
 func TestNext(t *testing.T) {
-	runs := []struct {
+	var runs = []struct {
 		time, spec string
 		expected   string
 	}{
@@ -185,6 +185,17 @@ func TestNext(t *testing.T) {
 		{"2018-02-14T05:00:00-0500", "TZ=America/Sao_Paulo 0 0 9 22 * ?", "2018-02-22T07:00:00-0500"},
 	}
 
+	var quartzRuns = []struct {
+		time, spec string
+		expected   string
+	}{
+		{"Mon Jul 9 23:35 2012", "0 0 0 * Feb Mon 2013", "Mon Feb 4 00:00 2013"},
+		{"Mon Jul 9 23:35 2012", "0 0 0 * Feb Mon 2015", "Mon Feb 2 00:00 2015"},
+		{"Mon Jul 9 23:35 2012", "0 0 0 * Feb Mon/2 2012/2", "Mon Feb 3 00:00 2014"},
+
+		// No year provided
+		{"2012-11-04T00:00:00-0400", "TZ=America/New_York 0 0 * * * ?", "2012-11-04T01:00:00-0400"},
+	}
 	for _, c := range runs {
 		sched, err := secondParser.Parse(c.spec)
 		if err != nil {
@@ -198,16 +209,79 @@ func TestNext(t *testing.T) {
 		}
 	}
 
-	quartzRuns := []struct {
+	for _, c := range quartzRuns {
+		sched, err := quartzParser.Parse(c.spec)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		actual := sched.Next(getTime(c.time))
+		expected := getTime(c.expected)
+		if !actual.Equal(expected) {
+			t.Errorf("%s, \"%s\": (expected) %v != %v (actual)", c.time, c.spec, expected, actual)
+		}
+	}
+}
+
+func TestLatest(t *testing.T) {
+	var runs = []struct {
 		time, spec string
 		expected   string
 	}{
-		{"Mon Jul 9 23:35 2012", "0 0 0 * Feb Mon 2013", "Mon Feb 4 00:00 2013"},
-		{"Mon Jul 9 23:35 2012", "0 0 0 * Feb Mon 2015", "Mon Feb 2 00:00 2015"},
-		{"Mon Jul 9 23:35 2012", "0 0 0 * Feb Mon/2 2012/2", "Mon Feb 3 00:00 2014"},
+		// Simple cases
+		{"Mon Jul 9 15:30 2012", "0 28 * * * *", "Mon Jul 9 15:28 2012"},
+		{"Mon Jul 9 15:28:00.9 2012", "0 28 * * * *", "Mon Jul 9 15:28 2012"},
+		{"Mon Jul 9 15:00 2012", "0 0/15 * * * *", "Mon Jul 9 15:00 2012"},
+		{"Mon Jul 9 15:00 2012", "0 1/15 * * * *", "Mon Jul 9 14:46 2012"},
+		{"Mon Jul 9 14:59:59 2012", "0 0/15 * * * *", "Mon Jul 9 14:45 2012"},
 
-		// No year provided
-		{"2012-11-04T00:00:00-0400", "TZ=America/New_York 0 0 * * * ?", "2012-11-04T01:00:00-0400"},
+		// Wrap around days
+		{"Tue Jul 10 00:00 2012", "0 1/15 * * * *", "Mon Jul 9 23:46 2012"},
+		{"Tue Jul 10 00:19 2012", "0 20-35/15 * * * *", "Mon Jul 9 23:35 2012"},
+		{"Tue Jul 10 00:20:14 2012", "15/35 20-35/15 * * * *", "Mon Jul 9 23:35:50 2012"},
+		{"Tue Jul 10 01:20:14 2012", "15/35 20-35/15 1/2 * * *", "Mon Jul 9 23:35:50 2012"},
+		{"Tue Jul 10 10:20:14 2012", "15/35 20-35/15 10-12 * * *", "Mon Jul 9 12:35:50 2012"},
+
+		{"Thu Jul 11 01:20:14 2012", "15/35 20-35/15 1/2 */2 * *", "Mon Jul 9 23:35:50 2012"},
+		{"Wed Jul 10 00:20:14 2012", "15/35 20-35/15 * 9-20 * *", "Mon Jul 9 23:35:50 2012"},
+		{"Wed Jul 10 00:20:14 2012", "15/35 20-35/15 * 9-20 Jul *", "Mon Jul 9 23:35:50 2012"},
+
+		// Wrap around months
+		{"Fri Nov 9 00:00 2012", "0 0 0 9 Apr-Oct ?", "Tue Oct 9 00:00 2012"},
+		{"Tue Aug 1 00:00 2012", "0 0 0 2/5 Apr,Aug,Oct Mon", "Mon Apr 30 00:00 2012"},
+		{"Tue Nov 1 00:00 2012", "0 0 0 */5 Oct Mon", "Wed Oct 31 00:00 2012"},
+
+		// Wrap around years
+		{"Mon Jan 6 23:35 2014", "0 0 0 * Feb Mon", "Mon Feb 25 00:00 2013"},
+		{"Mon Jan 6 23:35 2014", "0 0 0 * Feb Mon/2", "Wed Feb 27 00:00 2013"},
+
+		// Wrap around minute, hour, day, month, and year
+		{"Tue Jan 1 00:00:00 2013", "1 * * * * *", "Mon Dec 31 23:59:01 2012"},
+
+		// Leap year
+		{"Wed Feb 1 23:35 2017", "0 0 0 29 Feb ?", "Mon Feb 29 00:00 2016"},
+	}
+
+	var quartzRuns = []struct {
+		time, spec string
+		expected   string
+	}{
+		{"Mon Jul 9 23:35 2014", "0 0 0 * Feb Mon 2013", "Mon Feb 25 00:00 2013"},
+		{"Mon Jul 9 23:35 2015", "0 0 0 * Feb Mon 2015", "Mon Feb 23 00:00 2015"},
+		{"Mon Jul 9 23:35 2013", "0 0 0 * Feb Mon/2 2012/2", "Wed Feb 29 00:00 2012"},
+	}
+
+	for _, c := range runs {
+		sched, err := secondParser.Parse(c.spec)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		actual := sched.Latest(getTime(c.time))
+		expected := getTime(c.expected)
+		if !actual.Equal(expected) {
+			t.Errorf("%s, \"%s\": (expected) %v != %v (actual)", c.time, c.spec, expected, actual)
+		}
 	}
 
 	for _, c := range quartzRuns {
@@ -216,7 +290,7 @@ func TestNext(t *testing.T) {
 			t.Error(err)
 			continue
 		}
-		actual := sched.Next(getTime(c.time))
+		actual := sched.Latest(getTime(c.time))
 		expected := getTime(c.expected)
 		if !actual.Equal(expected) {
 			t.Errorf("%s, \"%s\": (expected) %v != %v (actual)", c.time, c.spec, expected, actual)
