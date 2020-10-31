@@ -353,8 +353,8 @@ func dayMatches(s *SpecSchedule, t time.Time) bool {
 // basically EOM(to EOM - 7) flag is stored in bits 55 - 48 of SpecSchedule's Dom
 // you just need to know what date of t's eom, and shift bits 55 - 48 (0x00FF_0000_0000_0000) to that position
 func eomBits(s *SpecSchedule, t time.Time) (uint64, uint64) {
-	bDow := byte(s.Dow & 0x00FE000000000000 >> (6 * 8))
-	if s.Dom&0x00FF000000000000 == 0 && bDow == 0 {
+	bDow := byte(s.Dow.Bit(0x00FE000000000000) >> (6 * 8))
+	if s.Dom.Bit(0x00FF000000000000) == 0 && bDow == 0 {
 		return 0, 0
 	}
 	eom := byte(30)
@@ -392,5 +392,5 @@ func eomBits(s *SpecSchedule, t time.Time) (uint64, uint64) {
 		}
 		dowBits = uint64(bDow) << (6 * 8)
 	}
-	return (s.Dom & 0x00FF000000000000) >> (55 - eom), dowBits >> (55 - eom)
+	return s.Dom.Bit(0x00FF000000000000) >> (55 - eom), dowBits >> (55 - eom)
 }
