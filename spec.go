@@ -392,5 +392,5 @@ func eomBits(s *SpecSchedule, t time.Time) (uint64, uint64) {
 		}
 		dowBits = uint64(bDow) << (6 * 8)
 	}
-	return s.Dom.Bit(0x00FF000000000000) >> uint64(55 - eom), dowBits >> uint64(55 - eom)
+	return s.Dom.Bit(0x00FF000000000000) >> (55 - uint64(eom)), dowBits >> (55 - uint64(eom))
 }
